@@ -1,101 +1,118 @@
-# Cryptocurrency Price Monitor & Chart Generator
+## Cryptocurrency Price Monitor & Chart Display
 
-A two-part system for monitoring cryptocurrency prices and generating charts:
-- **Go script**: Continuously monitors prices and saves data
-- **Python script**: Generates various charts from collected data
+This project consists of a Go-based cryptocurrency price monitor and a Python-based chart display system.
 
-## Prerequisites
+### Prerequisites
 
-- Go 1.19 or later
-- Python 3.8 or later
-- Internet connection (for API calls)
+1. **Go** (1.16 or higher)
+2. **Python** (3.7 or higher)
+3. **Python packages**: matplotlib, pandas
 
-## Installation
+### Installation
 
-1. **Clone or download the files** to a directory
-
+1. **Install Go dependencies** (none required - uses standard library)
 2. **Install Python dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-## Usage
+### Usage
 
-### Step 1: Run the Go Monitor
+#### Step 1: Run the Price Monitor
 
-Start monitoring cryptocurrency prices:
+**Option A - Using the shell script:**
+```bash
+chmod +x run_monitor.sh
+./run_monitor.sh
+```
 
+**Option B - Manual execution:**
 ```bash
 go run crypto_monitor.go
 ```
 
 The monitor will:
-- Fetch prices every minute for Bitcoin, Ethereum, Cardano, Solana, and Polkadot
+- Fetch prices for Bitcoin, Ethereum, Cardano, Solana, and Polkadot every 60 seconds
 - Display current prices in the console
-- Save data to JSON files in the `data/` directory
-- Run continuously until stopped with `Ctrl+C`
+- Save price history to `crypto_prices.json`
 
-### Step 2: Generate Charts
+#### Step 2: Display Charts
 
-After collecting some data, run the Python chart generator:
+After the monitor has collected some data, run the Python charting script:
 
+**Basic usage (shows combined chart):**
 ```bash
 python crypto_charts.py
 ```
 
-You'll be prompted to choose from three chart types:
-
-1. **Current Price Comparison**: Bar chart showing current prices
-2. **Price History**: Line chart showing price trends over time
-3. **Performance Chart**: Bar chart showing percentage changes
-
-## File Structure
-
-```
-.
-├── crypto_monitor.go    # Go script for price monitoring
-├── crypto_charts.py     # Python script for chart generation
-├── go.mod              # Go module file
-├── requirements.txt    # Python dependencies
-└── data/              # Directory for price data (created automatically)
-    ├── crypto_prices_YYYYMMDD.json
-    └── latest_prices.json
+**Show only price table:**
+```bash
+python crypto_charts.py --table
 ```
 
-## Customization
+**Show combined chart of all cryptocurrencies:**
+```bash
+python crypto_charts.py --combined
+```
 
-### Adding More Cryptocurrencies
+**Show individual charts for each cryptocurrency:**
+```bash
+python crypto_charts.py --individual
+```
 
+**Show table and combined chart:**
+```bash
+python crypto_charts.py --table --combined
+```
+
+### Features
+
+**Go Monitor:**
+- Real-time price monitoring from CoinGecko API
+- Automatic data persistence to JSON file
+- Configurable update interval (currently 60 seconds)
+- Keeps last 100 price points for each cryptocurrency
+
+**Python Charts:**
+- Individual price charts for each cryptocurrency
+- Combined comparison chart
+- Price table with percentage changes
+- Interactive matplotlib charts
+- Command-line options for different display modes
+
+### File Structure
+
+- `crypto_monitor.go` - Main Go application for price monitoring
+- `crypto_charts.py` - Python script for chart visualization
+- `run_monitor.sh` - Convenience script to run the monitor
+- `requirements.txt` - Python dependencies
+- `crypto_prices.json` - Generated data file (created by monitor)
+
+### Customization
+
+**To monitor different cryptocurrencies:**
 Edit the `cryptos` slice in `crypto_monitor.go`:
 
 ```go
-cryptos := []string{"bitcoin", "ethereum", "cardano", "solana", "polkadot", "dogecoin"}
+cryptos := []string{"bitcoin", "ethereum", "litecoin", "ripple"}
 ```
 
-### Changing Update Interval
-
+**To change update frequency:**
 Modify the sleep duration in `crypto_monitor.go`:
-
 ```go
-// For 30-second updates:
-time.Sleep(30 * time.Second)
+time.Sleep(30 * time.Second) // Update every 30 seconds
 ```
 
-### Modifying Chart Styles
+### Notes
 
-Edit the color schemes and styling in `crypto_charts.py` in the `create_*_chart` methods.
+- The application uses the free CoinGecko API (no API key required)
+- Internet connection is required for price monitoring
+- Charts will only show data after the monitor has been running for some time
+- Press `Ctrl+C` to stop the Go monitor
 
-## Notes
+### Troubleshooting
 
-- The Go monitor uses the free CoinGecko API
-- Data is saved locally in JSON format
-- Historical charts require at least a few minutes of monitoring data
-- The system keeps only the last 100 data points to prevent large files
-
-## Troubleshooting
-
-- **No data files**: Ensure the Go monitor has been running for at least one minute
-- **API errors**: Check your internet connection and CoinGecko API status
-- **Chart display issues**: Verify matplotlib is properly installed in your Python environment
-
-Enjoy monitoring your cryptocurrency investments! 📈
+- If you get rate limit errors, increase the sleep interval in the Go code
+- Ensure you have an active internet connection
+- Make sure all dependencies are installed correctly
+- Check that the `crypto_prices.json` file is being created and updated
