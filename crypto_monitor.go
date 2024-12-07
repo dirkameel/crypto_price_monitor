@@ -4,128 +4,153 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"time"
 )
 
-// CryptoPrice represents the price data for a cryptocurrency
-type CryptoPrice struct {
+// CryptoData represents the structure for cryptocurrency data
+type CryptoData struct {
 	Symbol string  `json:"symbol"`
 	Price  float64 `json:"price,string"`
-	Time   string  `json:"time"`
+	Time   int64   `json:"time"`
 }
 
-// CoinGeckoResponse represents the response from CoinGecko API
-type CoinGeckoResponse map[string]map[string]float64
+// APIResponse represents the response from the CoinCap API
+type APIResponse struct {
+	Data struct {
+		Symbol string `json:"symbol"`
+		Price  string `json:"priceUsd"`
+		Time   int64  `json:"timestamp"`
+	} `json:"data"`
+}
+
+// Config holds configuration for the monitor
+type Config struct {
+	Symbols    []string `json:"symbols"`
+	Interval   int      `json:"interval"`
+	OutputFile string   `json:"output_file"`
+}
 
 func main() {
-	// Cryptocurrencies to monitor
-	cryptos := []string{"bitcoin", "ethereum", "cardano", "solana", "polkadot"}
-	
-	fmt.Println("Cryptocurrency Price Monitor")
-	fmt.Println("============================")
-	
+	// Load configuration
+	config, err := loadConfig("config.json")
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Starting crypto monitor for symbols: %v\n", config.Symbols)
+	fmt.Printf("Monitoring interval: %d seconds\n", config.Interval)
+	fmt.Printf("Output file: %s\n", config.OutputFile)
+
+	// Create or clear the output file
+	err = initializeOutputFile(config.OutputFile)
+	if err != nil {
+		fmt.Printf("Error initializing output file: %v\n", err)
+		return
+	}
+
+	// Start monitoring
+	ticker := time.NewTicker(time.Duration(config.Interval) * time.Second)
+	defer ticker.Stop()
+
 	for {
-		prices, err := fetchCryptoPrices(cryptos)
-		if err != nil {
-			log.Printf("Error fetching prices: %v", err)
-			time.Sleep(30 * time.Second)
-			continue
+		select {
+		case <-ticker.C:
+			for _, symbol := range config.Symbols {
+				data, err := fetchCryptoPrice(symbol)
+				if err != nil {
+					fmt.Printf("Error fetching %s: %v\n", symbol, err)
+					continue
+				}
+				err = saveDataToFile(data, config.OutputFile)
+				if err != nil {
+					fmt.Printf("Error saving data: %v\n", err)
+				} else {
+					fmt.Printf("Saved %s: $%.2f at %s\n", 
+						data.Symbol, data.Price, time.Unix(data.Time/1000, 0).Format("15:04:05"))
+				}
+			}
+			fmt.Println("---")
 		}
-		
-		// Display current prices
-		displayPrices(prices)
-		
-		// Save to JSON file for Python charting
-		saveToJSON(prices)
-		
-		// Wait before next update
-		time.Sleep(60 * time.Second)
 	}
 }
 
-// fetchCryptoPrices fetches current prices from CoinGecko API
-func fetchCryptoPrices(cryptos []string) ([]CryptoPrice, error) {
-	// Build URL with multiple cryptocurrencies
-	url := "https://api.coingecko.com/api/v3/simple/price?ids="
-	for i, crypto := range cryptos {
-		if i > 0 {
-			url += ","
-		}
-		url += crypto
+// loadConfig reads the configuration from JSON file
+func loadConfig(filename string) (*Config, error) {
+	file, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
 	}
-	url += "&vs_currencies=usd"
+
+	var config Config
+	err = json.Unmarshal(file, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// fetchCryptoPrice fetches current price for a cryptocurrency symbol
+func fetchCryptoPrice(symbol string) (*CryptoData, error) {
+	url := fmt.Sprintf("https://api.coincap.io/v2/assets/%s", symbol)
 	
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	
-	var data CoinGeckoResponse
-	err = json.Unmarshal(body, &data)
+
+	var apiResp APIResponse
+	err = json.Unmarshal(body, &apiResp)
 	if err != nil {
 		return nil, err
 	}
-	
-	var prices []CryptoPrice
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
-	
-	for _, crypto := range cryptos {
-		if cryptoData, exists := data[crypto]; exists {
-			price := CryptoPrice{
-				Symbol: crypto,
-				Price:  cryptoData["usd"],
-				Time:   currentTime,
-			}
-			prices = append(prices, price)
-		}
+
+	price, err := parseFloat(apiResp.Data.Price)
+	if err != nil {
+		return nil, err
 	}
-	
-	return prices, nil
+
+	return &CryptoData{
+		Symbol: symbol,
+		Price:  price,
+		Time:   apiResp.Data.Time,
+	}, nil
 }
 
-// displayPrices prints current prices to console
-func displayPrices(prices []CryptoPrice) {
-	fmt.Printf("\n%s - Current Prices:\n", time.Now().Format("15:04:05"))
-	fmt.Println("-------------------")
-	for _, price := range prices {
-		fmt.Printf("%-12s: $%.2f\n", price.Symbol, price.Price)
-	}
-	fmt.Println("-------------------")
+// parseFloat safely parses string to float64
+func parseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
 }
 
-// saveToJSON saves price data to a JSON file for Python processing
-func saveToJSON(prices []CryptoPrice) {
-	// Read existing data
-	var allData []CryptoPrice
-	existingData, err := ioutil.ReadFile("crypto_prices.json")
-	if err == nil {
-		json.Unmarshal(existingData, &allData)
-	}
-	
-	// Append new data (keep last 100 records)
-	allData = append(allData, prices...)
-	if len(allData) > 100 {
-		allData = allData[len(allData)-100:]
-	}
-	
-	// Write to file
-	data, err := json.MarshalIndent(allData, "", "  ")
+// initializeOutputFile creates or clears the output file
+func initializeOutputFile(filename string) error {
+	return ioutil.WriteFile(filename, []byte(""), 0644)
+}
+
+// saveDataToFile appends crypto data to the output file
+func saveDataToFile(data *CryptoData, filename string) error {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		log.Printf("Error marshaling JSON: %v", err)
-		return
+		return err
 	}
-	
-	err = ioutil.WriteFile("crypto_prices.json", data, 0644)
+	defer file.Close()
+
+	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Error writing to file: %v", err)
+		return err
 	}
+
+	_, err = file.WriteString(string(jsonData) + "\n")
+	return err
 }
