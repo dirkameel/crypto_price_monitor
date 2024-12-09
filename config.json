@@ -1,0 +1,5 @@
+{
+  "symbols": ["bitcoin", "ethereum", "cardano", "solana"],
+  "interval": 60,
+  "output_file": "crypto_data.json"
+}
