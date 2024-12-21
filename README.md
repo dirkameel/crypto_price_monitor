@@ -1,118 +1,128 @@
-## Cryptocurrency Price Monitor & Chart Display
+# Cryptocurrency Price Monitor & Chart Generator
 
-This project consists of a Go-based cryptocurrency price monitor and a Python-based chart display system.
+A dual-language solution using Go for real-time cryptocurrency price monitoring and Python for data visualization.
 
-### Prerequisites
+## Prerequisites
 
-1. **Go** (1.16 or higher)
-2. **Python** (3.7 or higher)
-3. **Python packages**: matplotlib, pandas
+- Go 1.16+
+- Python 3.8+
+- Internet connection
 
-### Installation
+## Installation
 
-1. **Install Go dependencies** (none required - uses standard library)
-2. **Install Python dependencies**:
+1. **Install Python dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-### Usage
+2. **Ensure Go is installed and configured**
 
-#### Step 1: Run the Price Monitor
+## Quick Start
 
-**Option A - Using the shell script:**
+### Method 1: Automated Script (Recommended)
 ```bash
+# Make the script executable
 chmod +x run_monitor.sh
+
+# Run the complete system
 ./run_monitor.sh
 ```
 
-**Option B - Manual execution:**
-```bash
-go run crypto_monitor.go
+### Method 2: Manual Steps
+
+1. **Start the Go monitor:**
+   ```bash
+   go run crypto_monitor.go
+   ```
+   Or build and run:
+   ```bash
+   go build -o crypto_monitor crypto_monitor.go
+   ./crypto_monitor
+   ```
+
+2. **Generate charts with Python:**
+   ```bash
+   python3 chart_generator.py
+   ```
+
+## Configuration
+
+Edit `config.json` to customize:
+
+- `symbols`: Cryptocurrencies to monitor (use CoinCap API symbols)
+- `interval`: Data collection interval in seconds
+- `output_file`: Where to store collected data
+
+Example configuration:
+```json
+{
+  "symbols": ["bitcoin", "ethereum", "cardano", "solana"],
+  "interval": 60,
+  "output_file": "crypto_data.json"
+}
 ```
 
-The monitor will:
-- Fetch prices for Bitcoin, Ethereum, Cardano, Solana, and Polkadot every 60 seconds
-- Display current prices in the console
-- Save price history to `crypto_prices.json`
+## Usage Examples
 
-#### Step 2: Display Charts
-
-After the monitor has collected some data, run the Python charting script:
-
-**Basic usage (shows combined chart):**
+### Basic Chart Generation
 ```bash
-python crypto_charts.py
+python3 chart_generator.py
 ```
 
-**Show only price table:**
+### Generate Charts with Summary
 ```bash
-python crypto_charts.py --table
+python3 chart_generator.py --summary
 ```
 
-**Show combined chart of all cryptocurrencies:**
+### Custom Input/Output Files
 ```bash
-python crypto_charts.py --combined
+python3 chart_generator.py --input my_data.json --output my_chart.png
 ```
 
-**Show individual charts for each cryptocurrency:**
+### View Only Summary
 ```bash
-python crypto_charts.py --individual
+python3 chart_generator.py --summary --output /dev/null
 ```
 
-**Show table and combined chart:**
-```bash
-python crypto_charts.py --table --combined
-```
+## Features
 
-### Features
+- **Real-time Monitoring**: Go service fetches prices at configurable intervals
+- **Data Persistence**: All price data saved to JSON file
+- **Interactive Charts**: Python generates matplotlib charts with current prices
+- **Multi-currency Support**: Monitor multiple cryptocurrencies simultaneously
+- **Price Change Tracking**: Shows percentage changes from start of monitoring
 
-**Go Monitor:**
-- Real-time price monitoring from CoinGecko API
-- Automatic data persistence to JSON file
-- Configurable update interval (currently 60 seconds)
-- Keeps last 100 price points for each cryptocurrency
+## File Structure
 
-**Python Charts:**
-- Individual price charts for each cryptocurrency
-- Combined comparison chart
-- Price table with percentage changes
-- Interactive matplotlib charts
-- Command-line options for different display modes
-
-### File Structure
-
-- `crypto_monitor.go` - Main Go application for price monitoring
-- `crypto_charts.py` - Python script for chart visualization
-- `run_monitor.sh` - Convenience script to run the monitor
+- `crypto_monitor.go` - Go service for price monitoring
+- `config.json` - Configuration file
+- `chart_generator.py` - Python script for chart generation
+- `run_monitor.sh` - Automation script
 - `requirements.txt` - Python dependencies
-- `crypto_prices.json` - Generated data file (created by monitor)
+- `crypto_data.json` - Generated data file (created by Go monitor)
+- `crypto_charts.png` - Generated chart file (created by Python script)
 
-### Customization
+## Stopping the Monitor
 
-**To monitor different cryptocurrencies:**
-Edit the `cryptos` slice in `crypto_monitor.go`:
-
-```go
-cryptos := []string{"bitcoin", "ethereum", "litecoin", "ripple"}
+If using the automated script:
+```bash
+kill $(cat monitor.pid)
 ```
 
-**To change update frequency:**
-Modify the sleep duration in `crypto_monitor.go`:
-```go
-time.Sleep(30 * time.Second) // Update every 30 seconds
-```
+If running manually, use Ctrl+C in the terminal where the Go monitor is running.
 
-### Notes
+## Supported Cryptocurrencies
 
-- The application uses the free CoinGecko API (no API key required)
-- Internet connection is required for price monitoring
-- Charts will only show data after the monitor has been running for some time
-- Press `Ctrl+C` to stop the Go monitor
+Use any cryptocurrency symbol supported by the CoinCap API v2. Common examples:
+- `bitcoin`, `ethereum`, `cardano`, `solana`, `polkadot`, `dogecoin`
 
-### Troubleshooting
+## Troubleshooting
 
-- If you get rate limit errors, increase the sleep interval in the Go code
-- Ensure you have an active internet connection
-- Make sure all dependencies are installed correctly
-- Check that the `crypto_prices.json` file is being created and updated
+1. **No data in charts**: Ensure the Go monitor has been running for at least one interval
+2. **API errors**: Check internet connection and verify cryptocurrency symbols
+3. **Chart generation fails**: Ensure all Python dependencies are installed
+4. **Permission denied**: Make `run_monitor.sh` executable with `chmod +x run_monitor.sh`
+
+## API Notes
+
+This solution uses the free CoinCap API v2. Be mindful of rate limits for extended monitoring.
