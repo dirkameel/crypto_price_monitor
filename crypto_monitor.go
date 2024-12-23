@@ -3,154 +3,124 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
 )
 
-// CryptoData represents the structure for cryptocurrency data
+// CryptoData represents the structure for cryptocurrency price data
 type CryptoData struct {
 	Symbol string  `json:"symbol"`
 	Price  float64 `json:"price,string"`
-	Time   int64   `json:"time"`
+	Time   string  `json:"time"`
 }
 
-// APIResponse represents the response from the CoinCap API
-type APIResponse struct {
-	Data struct {
-		Symbol string `json:"symbol"`
-		Price  string `json:"priceUsd"`
-		Time   int64  `json:"timestamp"`
-	} `json:"data"`
-}
-
-// Config holds configuration for the monitor
-type Config struct {
-	Symbols    []string `json:"symbols"`
-	Interval   int      `json:"interval"`
-	OutputFile string   `json:"output_file"`
-}
+// CoinGeckoResponse represents the API response structure
+type CoinGeckoResponse map[string]map[string]float64
 
 func main() {
-	// Load configuration
-	config, err := loadConfig("config.json")
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Starting crypto monitor for symbols: %v\n", config.Symbols)
-	fmt.Printf("Monitoring interval: %d seconds\n", config.Interval)
-	fmt.Printf("Output file: %s\n", config.OutputFile)
-
-	// Create or clear the output file
-	err = initializeOutputFile(config.OutputFile)
-	if err != nil {
-		fmt.Printf("Error initializing output file: %v\n", err)
-		return
-	}
-
-	// Start monitoring
-	ticker := time.NewTicker(time.Duration(config.Interval) * time.Second)
-	defer ticker.Stop()
-
+	// Cryptocurrencies to monitor
+	cryptos := []string{"bitcoin", "ethereum", "cardano", "solana", "polkadot"}
+	
+	fmt.Println("Cryptocurrency Price Monitor Started...")
+	fmt.Println("Monitoring:", cryptos)
+	fmt.Println("Press Ctrl+C to stop")
+	
 	for {
-		select {
-		case <-ticker.C:
-			for _, symbol := range config.Symbols {
-				data, err := fetchCryptoPrice(symbol)
-				if err != nil {
-					fmt.Printf("Error fetching %s: %v\n", symbol, err)
-					continue
-				}
-				err = saveDataToFile(data, config.OutputFile)
-				if err != nil {
-					fmt.Printf("Error saving data: %v\n", err)
-				} else {
-					fmt.Printf("Saved %s: $%.2f at %s\n", 
-						data.Symbol, data.Price, time.Unix(data.Time/1000, 0).Format("15:04:05"))
-				}
-			}
-			fmt.Println("---")
+		// Fetch prices for all cryptocurrencies
+		prices, err := fetchCryptoPrices(cryptos)
+		if err != nil {
+			log.Printf("Error fetching prices: %v", err)
+			time.Sleep(30 * time.Second)
+			continue
 		}
+		
+		// Save data to JSON file for Python to read
+		err = saveToJSON(prices)
+		if err != nil {
+			log.Printf("Error saving data: %v", err)
+		}
+		
+		// Display current prices
+		displayPrices(prices)
+		
+		// Wait before next update
+		time.Sleep(60 * time.Second)
 	}
 }
 
-// loadConfig reads the configuration from JSON file
-func loadConfig(filename string) (*Config, error) {
-	file, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
+// fetchCryptoPrices fetches current prices from CoinGecko API
+func fetchCryptoPrices(cryptos []string) ([]CryptoData, error) {
+	// Build API URL with multiple cryptocurrencies
+	url := "https://api.coingecko.com/api/v3/simple/price?ids="
+	for i, crypto := range cryptos {
+		if i > 0 {
+			url += ","
+		}
+		url += crypto
 	}
-
-	var config Config
-	err = json.Unmarshal(file, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
-
-// fetchCryptoPrice fetches current price for a cryptocurrency symbol
-func fetchCryptoPrice(symbol string) (*CryptoData, error) {
-	url := fmt.Sprintf("https://api.coincap.io/v2/assets/%s", symbol)
+	url += "&vs_currencies=usd"
 	
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch data: %v", err)
 	}
 	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
+	
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response: %v", err)
 	}
-
-	var apiResp APIResponse
-	err = json.Unmarshal(body, &apiResp)
+	
+	var data CoinGeckoResponse
+	err = json.Unmarshal(body, &data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
-
-	price, err := parseFloat(apiResp.Data.Price)
-	if err != nil {
-		return nil, err
+	
+	var prices []CryptoData
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
+	
+	for _, crypto := range cryptos {
+		if cryptoData, exists := data[crypto]; exists {
+			if usdPrice, exists := cryptoData["usd"]; exists {
+				prices = append(prices, CryptoData{
+					Symbol: crypto,
+					Price:  usdPrice,
+					Time:   currentTime,
+				})
+			}
+		}
 	}
-
-	return &CryptoData{
-		Symbol: symbol,
-		Price:  price,
-		Time:   apiResp.Data.Time,
-	}, nil
+	
+	return prices, nil
 }
 
-// parseFloat safely parses string to float64
-func parseFloat(s string) (float64, error) {
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	return f, err
-}
-
-// initializeOutputFile creates or clears the output file
-func initializeOutputFile(filename string) error {
-	return ioutil.WriteFile(filename, []byte(""), 0644)
-}
-
-// saveDataToFile appends crypto data to the output file
-func saveDataToFile(data *CryptoData, filename string) error {
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+// saveToJSON saves the price data to a JSON file
+func saveToJSON(prices []CryptoData) error {
+	file, err := os.Create("crypto_prices.json")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file: %v", err)
 	}
 	defer file.Close()
-
-	jsonData, err := json.Marshal(data)
+	
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	err = encoder.Encode(prices)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to encode JSON: %v", err)
 	}
+	
+	return nil
+}
 
-	_, err = file.WriteString(string(jsonData) + "\n")
-	return err
+// displayPrices prints current prices to console
+func displayPrices(prices []CryptoData) {
+	fmt.Printf("\n=== Current Prices (%s) ===\n", time.Now().Format("15:04:05"))
+	for _, crypto := range prices {
+		fmt.Printf("%-12s: $%.2f\n", crypto.Symbol, crypto.Price)
+	}
+	fmt.Println("=============================")
 }
