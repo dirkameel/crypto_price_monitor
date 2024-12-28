@@ -1,125 +1,165 @@
 #!/usr/bin/env python3
+"""
+Cryptocurrency Chart Generator
+Reads data from crypto_prices.json and generates basic charts
+"""
+
 import json
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
-import pandas as pd
-import argparse
-import sys
+import os
+import time
+from collections import defaultdict
 
-def load_crypto_data(filename):
-    """Load cryptocurrency data from JSON file"""
-    data = []
-    try:
-        with open(filename, 'r') as f:
-            for line in f:
-                if line.strip():
-                    data.append(json.loads(line.strip()))
-        return data
-    except FileNotFoundError:
-        print(f"Error: File {filename} not found. Make sure the Go monitor is running.")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing JSON data: {e}")
-        sys.exit(1)
-
-def generate_charts(data, output_file='crypto_charts.png'):
-    """Generate price charts for different cryptocurrencies"""
-    if not data:
-        print("No data available to generate charts.")
-        return
-    
-    # Convert to DataFrame for easier manipulation
-    df = pd.DataFrame(data)
-    df['datetime'] = pd.to_datetime(df['time'], unit='ms')
-    
-    # Group by symbol
-    symbols = df['symbol'].unique()
-    
-    # Create subplots
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle('Cryptocurrency Price Monitoring', fontsize=16, fontweight='bold')
-    
-    axes = axes.flatten()
-    
-    for i, symbol in enumerate(symbols):
-        if i >= len(axes):
-            break
-            
-        symbol_data = df[df['symbol'] == symbol]
+class CryptoChartGenerator:
+    def __init__(self, data_file='crypto_prices.json'):
+        self.data_file = data_file
+        self.historical_data = defaultdict(list)
         
-        if len(symbol_data) > 0:
-            axes[i].plot(symbol_data['datetime'], symbol_data['price'], 
-                        marker='o', linewidth=2, markersize=4)
-            axes[i].set_title(f'{symbol.upper()} Price', fontweight='bold')
-            axes[i].set_ylabel('Price (USD)')
-            axes[i].grid(True, alpha=0.3)
+    def load_data(self):
+        """Load current price data from JSON file"""
+        try:
+            with open(self.data_file, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+    
+    def update_historical_data(self, current_data):
+        """Update historical data with current prices"""
+        for crypto in current_data:
+            symbol = crypto['symbol']
+            price = crypto['price']
+            timestamp = datetime.strptime(crypto['time'], '%Y-%m-%d %H:%M:%S')
             
-            # Format x-axis
-            axes[i].xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            axes[i].xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            plt.setp(axes[i].xaxis.get_majorticklabels(), rotation=45)
+            self.historical_data[symbol].append({
+                'timestamp': timestamp,
+                'price': price
+            })
             
-            # Add current price annotation
-            current_price = symbol_data['price'].iloc[-1]
-            axes[i].annotate(f'Current: ${current_price:.2f}', 
-                           xy=(1, 0), xycoords='axes fraction',
-                           xytext=(-5, 5), textcoords='offset points',
-                           ha='right', va='bottom',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='lightblue', alpha=0.7))
+            # Keep only last 50 data points for each crypto
+            if len(self.historical_data[symbol]) > 50:
+                self.historical_data[symbol] = self.historical_data[symbol][-50:]
     
-    # Hide empty subplots
-    for i in range(len(symbols), len(axes)):
-        axes[i].set_visible(False)
-    
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"Charts saved to {output_file}")
-    plt.show()
-
-def print_summary(data):
-    """Print a summary of the collected data"""
-    if not data:
-        print("No data available.")
-        return
-    
-    df = pd.DataFrame(data)
-    latest_data = df.sort_values('time').groupby('symbol').tail(1)
-    
-    print("\n" + "="*50)
-    print("CRYPTO PRICE SUMMARY")
-    print("="*50)
-    
-    for _, row in latest_data.iterrows():
-        symbol_data = df[df['symbol'] == row['symbol']]
-        price_change = symbol_data['price'].iloc[-1] - symbol_data['price'].iloc[0] if len(symbol_data) > 1 else 0
-        change_percent = (price_change / symbol_data['price'].iloc[0]) * 100 if len(symbol_data) > 1 else 0
+    def create_current_prices_chart(self, data):
+        """Create a bar chart of current prices"""
+        if not data:
+            print("No data available for chart")
+            return
+            
+        symbols = [crypto['symbol'] for crypto in data]
+        prices = [crypto['price'] for crypto in data]
         
-        print(f"{row['symbol'].upper():<12} ${row['price']:>8.2f} "
-              f"({change_percent:+.2f}%)")
+        plt.figure(figsize=(12, 6))
+        bars = plt.bar(symbols, prices, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'])
+        
+        # Add value labels on bars
+        for bar, price in zip(bars, prices):
+            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(prices)*0.01,
+                    f'${price:.2f}', ha='center', va='bottom')
+        
+        plt.title('Current Cryptocurrency Prices', fontsize=16, fontweight='bold')
+        plt.ylabel('Price (USD)', fontsize=12)
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        plt.savefig('current_prices.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        print("Current prices chart saved as 'current_prices.png'")
     
-    print(f"\nTotal data points: {len(data)}")
-    print(f"Time range: {df['datetime'].min().strftime('%H:%M')} - {df['datetime'].max().strftime('%H:%M')}")
+    def create_price_trend_chart(self):
+        """Create line charts showing price trends over time"""
+        if not self.historical_data:
+            print("No historical data available for trend chart")
+            return
+            
+        plt.figure(figsize=(14, 8))
+        
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7']
+        
+        for i, (symbol, data) in enumerate(self.historical_data.items()):
+            if len(data) < 2:
+                continue
+                
+            timestamps = [point['timestamp'] for point in data]
+            prices = [point['price'] for point in data]
+            
+            color = colors[i % len(colors)]
+            plt.plot(timestamps, prices, marker='o', linewidth=2, markersize=4,
+                    label=symbol, color=color)
+            
+            # Add latest price annotation
+            latest_price = prices[-1]
+            plt.annotate(f'${latest_price:.2f}', 
+                        xy=(timestamps[-1], latest_price),
+                        xytext=(10, 0), textcoords='offset points',
+                        fontweight='bold')
+        
+        plt.title('Cryptocurrency Price Trends', fontsize=16, fontweight='bold')
+        plt.ylabel('Price (USD)', fontsize=12)
+        plt.xlabel('Time', fontsize=12)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Format x-axis to show time nicely
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        plt.gca().xaxis.set_major_locator(mdates.MinuteLocator(interval=5))
+        plt.gcf().autofmt_xdate()
+        
+        plt.tight_layout()
+        plt.savefig('price_trends.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        print("Price trends chart saved as 'price_trends.png'")
+    
+    def generate_performance_summary(self, data):
+        """Generate a text summary of performance"""
+        if not data:
+            return
+            
+        print("\n" + "="*50)
+        print("CRYPTO PERFORMANCE SUMMARY")
+        print("="*50)
+        
+        for crypto in data:
+            symbol = crypto['symbol']
+            current_price = crypto['price']
+            
+            if symbol in self.historical_data and len(self.historical_data[symbol]) > 1:
+                first_price = self.historical_data[symbol][0]['price']
+                change = ((current_price - first_price) / first_price) * 100
+                change_symbol = "+" if change >= 0 else ""
+                print(f"{symbol:12}: ${current_price:8.2f} ({change_symbol}{change:+.2f}%)")
+            else:
+                print(f"{symbol:12}: ${current_price:8.2f} (New)")
+        
+        print("="*50)
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate cryptocurrency price charts')
-    parser.add_argument('--input', '-i', default='crypto_data.json', 
-                       help='Input JSON file with crypto data')
-    parser.add_argument('--output', '-o', default='crypto_charts.png',
-                       help='Output chart image file')
-    parser.add_argument('--summary', '-s', action='store_true',
-                       help='Show data summary')
+    chart_gen = CryptoChartGenerator()
     
-    args = parser.parse_args()
+    print("Cryptocurrency Chart Generator Started...")
+    print("Monitoring price data and generating charts")
+    print("Press Ctrl+C to stop\n")
     
-    # Load data
-    data = load_crypto_data(args.input)
-    
-    if args.summary:
-        print_summary(data)
-    
-    # Generate charts
-    generate_charts(data, args.output)
+    try:
+        while True:
+            # Load current data
+            current_data = chart_gen.load_data()
+            
+            if current_data:
+                # Update historical data
+                chart_gen.update_historical_data(current_data)
+                
+                # Generate charts
+                chart_gen.create_current_prices_chart(current_data)
+                chart_gen.create_price_trend_chart()
+                chart_gen.generate_performance_summary(current_data)
+            
+            # Wait before next update
+            time.sleep(60)
+            
+    except KeyboardInterrupt:
+        print("\nChart generator stopped.")
 
 if __name__ == "__main__":
     main()
