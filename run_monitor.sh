@@ -1,26 +1,32 @@
 #!/bin/bash
 
-# Build and run the Go monitor
-echo "Building Go crypto monitor..."
-go build -o crypto_monitor crypto_monitor.go
+# Cryptocurrency Monitor Startup Script
 
-echo "Starting crypto monitor..."
-./crypto_monitor &
-MONITOR_PID=$!
+echo "Starting Cryptocurrency Monitoring System..."
 
-echo "Monitor started with PID: $MONITOR_PID"
+# Check if Go and Python are installed
+if ! command -v go &> /dev/null; then
+    echo "Error: Go is not installed or not in PATH"
+    exit 1
+fi
 
-# Wait for some data to be collected
-echo "Waiting for data collection (30 seconds)..."
-sleep 30
+if ! command -v python3 &> /dev/null; then
+    echo "Error: Python 3 is not installed or not in PATH"
+    exit 1
+fi
 
-# Generate initial charts
-echo "Generating initial charts..."
-python3 chart_generator.py --summary
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip3 install matplotlib
 
-echo "Monitor is running in background (PID: $MONITOR_PID)"
-echo "Run 'python3 chart_generator.py' to generate updated charts"
-echo "Run 'kill $MONITOR_PID' to stop the monitor"
+# Create data directory if it doesn't exist
+mkdir -p data
 
-# Save PID to file for easy management
-echo $MONITOR_PID > monitor.pid
+echo "Starting Go monitor in background..."
+go run crypto_monitor.go &
+
+echo "Starting Python chart generator..."
+python3 chart_generator.py
+
+# Cleanup when script exits
+trap "pkill -f 'go run crypto_monitor.go'; exit" INT
